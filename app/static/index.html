@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Change Intelligence</title><link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header><div><span class="eyebrow">VISION ANALYSIS WORKSPACE</span><h1>Change Intelligence</h1></div><span class="status"><i></i> DEMO PIPELINE</span></header>
+  <main>
+    <section class="hero"><div><p class="kicker">BEFORE / AFTER ANALYSIS</p><h2>두 장면 사이의<br><em>의미 있는 변화</em>를 읽습니다.</h2><p>이미지 정합부터 객체 탐지, 변화 분류, LLM 판독 보고서까지 하나의 흐름으로 확인하세요.</p></div><div class="steps"><span>01 정합</span><span>02 탐지</span><span>03 변화 분석</span><span>04 판독</span></div></section>
+    <form id="upload-form" class="upload-grid">
+      <label class="drop"><input required type="file" name="before" accept="image/png,image/jpeg,image/webp"><span class="tag">BEFORE</span><img alt="Before 미리보기"><strong>기준 영상 선택</strong><small>PNG · JPG · WEBP / 최대 15MB</small></label>
+      <label class="drop"><input required type="file" name="after" accept="image/png,image/jpeg,image/webp"><span class="tag accent">AFTER</span><img alt="After 미리보기"><strong>비교 영상 선택</strong><small>PNG · JPG · WEBP / 최대 15MB</small></label>
+      <button type="submit">분석 시작 <b>→</b></button>
+    </form>
+    <section id="loading" hidden><div class="loader"></div><p>영상을 비교하고 있습니다…</p></section>
+    <section id="results" hidden>
+      <div class="section-title"><div><p class="kicker">ANALYSIS RESULT</p><h2>변화 분석 결과</h2></div><span id="reg-score"></span></div>
+      <div id="summary" class="summary"></div>
+      <div class="result-grid"><article><h3>변화 목록</h3><div id="change-list"></div></article><article class="report"><h3>AI 판독 보고서 <span>초안</span></h3><p id="report"></p></article></div>
+      <details><summary>구조화 데이터 (JSON)</summary><pre id="json"></pre></details>
+    </section>
+  </main><footer>CHANGE INTELLIGENCE · HUMAN-IN-THE-LOOP ANALYSIS</footer>
+  <script src="/static/app.js"></script>
+</body></html>
