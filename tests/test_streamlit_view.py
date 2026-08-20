@@ -4,7 +4,14 @@ import pytest
 from PIL import Image
 
 from app.models import Box, Detection
-from streamlit_app import add_manual_detection, annotate_image, create_result, delete_detection
+from streamlit_app import (
+    add_manual_detection,
+    annotate_image,
+    apply_canvas_boxes,
+    create_result,
+    delete_detection,
+    detections_to_canvas,
+)
 
 
 def image_bytes(color: str) -> bytes:
@@ -49,3 +56,30 @@ def test_manual_detection_rejects_box_outside_image():
 
     with pytest.raises(ValueError, match="이미지 경계"):
         add_manual_detection(result, "after", "객체", 1.0, 0.8, 0.8, 0.3, 0.3)
+
+
+def test_detections_round_trip_through_mouse_canvas():
+    result = create_result(image_bytes("white"), image_bytes("gray"), "before.png", "after.png")
+    before = [item for item in result.detections if item.image == "before"]
+    drawing = detections_to_canvas(before, 500, 400)
+    drawing["objects"].append(
+        {
+            "type": "rect",
+            "left": 250,
+            "top": 80,
+            "width": 100,
+            "height": 120,
+            "scaleX": 1,
+            "scaleY": 1,
+        }
+    )
+
+    updated = apply_canvas_boxes(
+        result, "before", drawing["objects"], 500, 400, "차량"
+    )
+
+    assert len(updated) == 2
+    assert updated[0].label == before[0].label
+    assert updated[1].label == "차량"
+    assert updated[1].box == Box(x=0.5, y=0.2, width=0.2, height=0.3)
+    assert len([item for item in result.detections if item.image == "after"]) == 1

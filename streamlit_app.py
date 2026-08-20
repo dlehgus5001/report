@@ -10,12 +10,14 @@ from uuid import uuid4
 
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
+from streamlit_drawable_canvas import st_canvas
 
 from app.models import AnalysisResult, Box, Detection
 from app.services import Pipeline
 
 MAX_FILE_SIZE = 15 * 1024 * 1024
 CHANGE_LABELS = {"new": "신규", "missing": "소실", "moved": "이동", "modified": "변경"}
+DEFAULT_CLASSES = ["관심 객체", "사람", "차량", "건물", "시설물", "기타"]
 
 
 def annotate_image(data: bytes, detections: list[Detection]) -> Image.Image:
@@ -101,54 +103,133 @@ def delete_detection(result: AnalysisResult, detection_id: str) -> bool:
     return len(result.detections) != original_count
 
 
-def render_box_editor(result: AnalysisResult, image: Literal["before", "after"]) -> None:
-    """Render add/delete controls for one image's detection boxes."""
+def detections_to_canvas(
+    detections: list[Detection], canvas_width: int, canvas_height: int
+) -> dict:
+    """Convert normalized detections to Fabric.js rectangle objects."""
+    return {
+        "version": "4.4.0",
+        "objects": [
+            {
+                "type": "rect",
+                "left": item.box.x * canvas_width,
+                "top": item.box.y * canvas_height,
+                "width": item.box.width * canvas_width,
+                "height": item.box.height * canvas_height,
+                "fill": "rgba(201, 243, 107, 0.12)",
+                "stroke": "#c9f36b",
+                "strokeWidth": 3,
+            }
+            for item in detections
+        ],
+    }
+
+
+def apply_canvas_boxes(
+    result: AnalysisResult,
+    image: Literal["before", "after"],
+    objects: list[dict],
+    canvas_width: int,
+    canvas_height: int,
+    new_label: str,
+) -> list[Detection]:
+    """Replace one image's detections with rectangles returned by the canvas."""
+    previous = [item for item in result.detections if item.image == image]
+    replacements: list[Detection] = []
+    for index, item in enumerate(obj for obj in objects if obj.get("type") == "rect"):
+        scale_x = float(item.get("scaleX", 1))
+        scale_y = float(item.get("scaleY", 1))
+        x = max(0.0, float(item.get("left", 0)) / canvas_width)
+        y = max(0.0, float(item.get("top", 0)) / canvas_height)
+        width = min(float(item.get("width", 0)) * scale_x / canvas_width, 1 - x)
+        height = min(float(item.get("height", 0)) * scale_y / canvas_height, 1 - y)
+        if width <= 0 or height <= 0:
+            continue
+        old = previous[index] if index < len(previous) else None
+        replacements.append(
+            Detection(
+                id=old.id if old else f"{image}-manual-{uuid4().hex[:8]}",
+                image=image,
+                label=old.label if old else (new_label.strip() or "기타"),
+                confidence=old.confidence if old else 1.0,
+                box=Box(x=x, y=y, width=width, height=height),
+            )
+        )
+    result.detections = [item for item in result.detections if item.image != image] + replacements
+    return replacements
+
+
+def render_box_editor(
+    result: AnalysisResult, image: Literal["before", "after"], data: bytes
+) -> None:
+    """Render a mouse-driven canvas and a class-aware detection list."""
     title = "Before" if image == "before" else "After"
     detections = [item for item in result.detections if item.image == image]
-    with st.expander(f"{title} 탐지 박스 편집 ({len(detections)}개)"):
+    source = Image.open(BytesIO(data)).convert("RGB")
+    canvas_width = 520
+    canvas_height = max(180, round(canvas_width * source.height / source.width))
+    background = source.resize((canvas_width, canvas_height))
+
+    with st.expander(f"{title} 마우스 박스 편집 ({len(detections)}개)", expanded=True):
+        mode = st.radio(
+            "마우스 도구",
+            ["박스 추가", "선택·이동·크기 조절"],
+            horizontal=True,
+            key=f"canvas_mode_{image}",
+        )
+        class_col, custom_col = st.columns(2)
+        selected_class = class_col.selectbox(
+            "새 박스 Class", DEFAULT_CLASSES, key=f"canvas_class_{image}"
+        )
+        custom_class = custom_col.text_input(
+            "직접 입력 (선택)", placeholder="예: 굴착기", key=f"custom_class_{image}"
+        )
+        new_label = custom_class.strip() or selected_class
+        st.caption(
+            "이미지를 드래그해 박스를 추가하세요. 기존 박스는 선택 도구로 이동하거나 "
+            "크기를 바꾼 뒤 ‘변경 적용’을 누르면 저장됩니다."
+        )
+        canvas = st_canvas(
+            fill_color="rgba(201, 243, 107, 0.12)",
+            stroke_width=3,
+            stroke_color="#c9f36b",
+            background_image=background,
+            initial_drawing=detections_to_canvas(detections, canvas_width, canvas_height),
+            drawing_mode="rect" if mode == "박스 추가" else "transform",
+            display_toolbar=True,
+            update_streamlit=True,
+            height=canvas_height,
+            width=canvas_width,
+            key=f"canvas_{image}_{st.session_state.get(f'canvas_version_{image}', 0)}",
+        )
+        if st.button("캔버스 변경 적용", key=f"apply_canvas_{image}"):
+            objects = (canvas.json_data or {}).get("objects", [])
+            apply_canvas_boxes(
+                result, image, objects, canvas_width, canvas_height, new_label
+            )
+            st.session_state[f"canvas_version_{image}"] = (
+                st.session_state.get(f"canvas_version_{image}", 0) + 1
+            )
+            st.rerun()
+
+        st.markdown(f"#### 탐지 목록 · {len(detections)}개")
         if detections:
-            st.dataframe(
-                [
-                    {
-                        "객체명": item.label,
-                        "신뢰도": f"{item.confidence:.0%}",
-                        "x": item.box.x,
-                        "y": item.box.y,
-                        "너비": item.box.width,
-                        "높이": item.box.height,
-                    }
-                    for item in detections
-                ],
-                use_container_width=True,
-                hide_index=True,
-            )
-            labels = {item.id: f"{item.label} · {item.id}" for item in detections}
-            selected = st.selectbox(
-                "삭제할 박스", labels, format_func=labels.get, key=f"delete_select_{image}"
-            )
-            if st.button("선택한 박스 삭제", key=f"delete_box_{image}"):
-                delete_detection(result, selected)
-                st.rerun()
+            for index, item in enumerate(detections, start=1):
+                info, action = st.columns([4, 1])
+                info.markdown(
+                    f"**#{index} · Class: `{item.label}`**  \n"
+                    f"신뢰도 {item.confidence:.0%} · "
+                    f"x {item.box.x:.3f}, y {item.box.y:.3f}, "
+                    f"w {item.box.width:.3f}, h {item.box.height:.3f}"
+                )
+                if action.button("삭제", key=f"delete_{image}_{item.id}"):
+                    delete_detection(result, item.id)
+                    st.session_state[f"canvas_version_{image}"] = (
+                        st.session_state.get(f"canvas_version_{image}", 0) + 1
+                    )
+                    st.rerun()
         else:
             st.info("등록된 탐지 박스가 없습니다.")
-
-        st.markdown("**새 박스 추가** · 좌표는 이미지 크기 대비 0~1 값입니다.")
-        with st.form(f"add_box_{image}", clear_on_submit=True):
-            label = st.text_input("객체명", value="관심 객체", key=f"label_{image}")
-            confidence = st.slider("신뢰도", 0.0, 1.0, 1.0, 0.01, key=f"confidence_{image}")
-            x_col, y_col, w_col, h_col = st.columns(4)
-            x = x_col.number_input("x", 0.0, 1.0, 0.1, 0.01, key=f"x_{image}")
-            y = y_col.number_input("y", 0.0, 1.0, 0.1, 0.01, key=f"y_{image}")
-            width = w_col.number_input("너비", 0.01, 1.0, 0.3, 0.01, key=f"width_{image}")
-            height = h_col.number_input("높이", 0.01, 1.0, 0.3, 0.01, key=f"height_{image}")
-            submitted = st.form_submit_button("탐지 박스 추가")
-        if submitted:
-            try:
-                add_manual_detection(result, image, label, confidence, x, y, width, height)
-            except ValueError as exc:
-                st.error(str(exc))
-            else:
-                st.rerun()
 
 
 st.set_page_config(page_title="Change Intelligence", page_icon="🔎", layout="wide")
@@ -236,9 +317,9 @@ if "analysis" in st.session_state:
     )
     editor_before, editor_after = st.columns(2, gap="medium")
     with editor_before:
-        render_box_editor(result, "before")
+        render_box_editor(result, "before", st.session_state.before_data)
     with editor_after:
-        render_box_editor(result, "after")
+        render_box_editor(result, "after", st.session_state.after_data)
 
     changes_col, report_col = st.columns([1, 1.25], gap="medium")
     with changes_col:
