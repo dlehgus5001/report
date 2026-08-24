@@ -1,0 +1,49 @@
+# ============================================================
+# Multi-Source Intelligent System (MSIS) – Dependencies
+# ============================================================
+
+# --- Core ---
+numpy>=1.24.0
+Pillow>=10.0.0
+sqlalchemy>=2.0.0
+
+# --- PyTorch (GPU recommended) ---
+torch>=2.1.0
+torchvision>=0.16.0
+
+# --- HuggingFace Transformers ---
+# vLLM 0.11+ 는 transformers<5 를 요구하므로 상한 고정
+# SAM3 는 transformers>=4.48.0 필요
+transformers>=4.56.0,<5
+accelerate>=0.27.0
+sentencepiece>=0.1.99
+protobuf>=3.20.0
+
+# --- HuggingFace Hub (model download) ---
+huggingface_hub>=0.20.0
+
+# --- vLLM (EXAONE-3.5-7.8B-Instruct-AWQ 추론) ---
+# EXAONE 내장 지원 포함, trust_remote_code 불필요
+vllm>=0.18.0
+
+# --- Ollama Python client (optional, for ollama LLM backend) ---
+# ollama>=0.2.0
+
+# --- Super-Resolution (SAM3 전처리) ---
+# Real-ESRGAN: AI 기반 위성 이미지 업스케일 (미설치 시 PIL LANCZOS 폴백)
+basicsr>=1.4.2
+realesrgan>=0.3.0
+
+# --- Utilities ---
+tqdm>=4.65.0
+
+# --- Satellite Dashboard ---
+fastapi>=0.110.0          # REST API backend
+uvicorn[standard]>=0.29.0 # ASGI server
+python-multipart>=0.0.9   # FastAPI form/file upload support
+sgp4>=2.22                # TLE propagation (satellite position from orbital elements)
+global-land-mask>=0.4.1   # 위경도 → 육지/바다 판별 (바다 위 파이프라인 건너뜀)
+python-hwpx>=2.9.0        # HWPX (한글과컴퓨터) 파일 생성
+
+# --- GraphRAG Knowledge Graph ---
+networkx>=3.0             # In-memory graph operations + Louvain community detection

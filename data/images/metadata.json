@@ -1,0 +1,30 @@
+[
+  {
+    "source_type": "satellite",
+    "lat_center": 70.8742,
+    "lon_center": 35.3991,
+    "lat_min": 70.8642,
+    "lat_max": 70.8842,
+    "lon_min": 35.3891,
+    "lon_max": 35.409099999999995,
+    "resolution_m": 0.5,
+    "sensor_platform": "한국군위성-3",
+    "region_name": "KMS-003",
+    "image_file": "sample/alpha_past_20260322T012421.tiff",
+    "capture_time": "2026-03-22T01:24:21+00:00"
+  },
+  {
+    "source_type": "satellite",
+    "lat_center": 70.8742,
+    "lon_center": 35.3991,
+    "lat_min": 70.8642,
+    "lat_max": 70.8842,
+    "lon_min": 35.3891,
+    "lon_max": 35.409099999999995,
+    "resolution_m": 0.5,
+    "sensor_platform": "한국군위성-3",
+    "region_name": "KMS-003",
+    "image_file": "sample/alpha_current_20260322T072421.tiff",
+    "capture_time": "2026-03-22T07:24:21+00:00"
+  }
+]
