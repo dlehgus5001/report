@@ -21,6 +21,7 @@ import io
 import json
 import logging
 import queue
+import shutil
 import threading
 import time as _time
 from datetime import datetime
@@ -41,7 +42,7 @@ def _get_country_name(lat: float, lon: float) -> Optional[str]:
     except Exception:
         return None
 
-from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query, Request
+from fastapi import BackgroundTasks, Body, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -76,6 +77,9 @@ from src.utils.hwpx_writer import make_hwpx
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+_UPLOAD_DIR = IMAGES_DIR / "uploads"
+_ALLOWED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".tif", ".tiff"}
 
 # ── uvicorn access 로그 필터 ───────────────────────────────────────────────
 # 폴링성 엔드포인트(이미지 목록·썸네일·렌더 등)는 터미널 노이즈가 심하므로 숨긴다.
@@ -2026,6 +2030,51 @@ async def api_events():
 # ══════════════════════════════════════════════════════════════════════════
 # 임무계획 API
 # ══════════════════════════════════════════════════════════════════════════
+
+@app.post("/api/image-pairs")
+async def api_upload_image_pair(
+    previous: UploadFile = File(...),
+    current: UploadFile = File(...),
+):
+    """이전/현재 이미지 두 장을 저장하고 기존 단계별 분석 흐름에 적재한다."""
+    from PIL import Image as PILImage
+    from datetime import timedelta
+    from simulator_runner import run_ingest_pair
+
+    pair_id = str(_uuid.uuid4())
+    pair_dir = _UPLOAD_DIR / pair_id
+    pair_dir.mkdir(parents=True, exist_ok=False)
+    relative_paths = []
+    try:
+        for label, upload in (("previous", previous), ("current", current)):
+            suffix = Path(upload.filename or "").suffix.lower()
+            if suffix not in _ALLOWED_IMAGE_SUFFIXES:
+                raise HTTPException(status_code=400, detail=f"지원하지 않는 이미지 형식: {suffix or '없음'}")
+            content = await upload.read()
+            if not content:
+                raise HTTPException(status_code=400, detail=f"{label} 이미지가 비어 있습니다.")
+            target = pair_dir / f"{label}{suffix}"
+            target.write_bytes(content)
+            try:
+                with PILImage.open(target) as image:
+                    image.verify()
+            except Exception:
+                raise HTTPException(status_code=400, detail=f"{label} 파일이 올바른 이미지가 아닙니다.")
+            relative_paths.append(str(target.relative_to(IMAGES_DIR)))
+
+        now = datetime.utcnow()
+        result = await asyncio.to_thread(
+            run_ingest_pair,
+            relative_paths[0], relative_paths[1], now - timedelta(hours=6), now,
+        )
+        if not result["success"] or not result.get("session_id"):
+            raise HTTPException(status_code=500, detail=result.get("stderr_tail") or "이미지 적재 실패")
+        _notify_image_ingested(result["session_id"], result["image_ids"], target_description="")
+        _notify_db_updated(changed=["images"])
+        return result
+    except Exception:
+        shutil.rmtree(pair_dir, ignore_errors=True)
+        raise
 
 class _WaypointIn(BaseModel):
     name:               str = ""

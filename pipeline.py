@@ -136,6 +136,13 @@ class MavenPipeline:
             if existing_record is not None:
                 updated = update_image_record_meta(
                     image_id=existing_record.id,
+                    capture_time=meta.capture_time,
+                    source_type=meta.source_type,
+                    image_path=meta.image_path,
+                    lat_center=meta.lat_center,
+                    lon_center=meta.lon_center,
+                    resolution_m=meta.resolution_m,
+                    sensor_platform=meta.sensor_platform,
                     session_id=session_id,
                     det_width=det_w,
                     det_height=det_h,
