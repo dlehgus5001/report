@@ -94,6 +94,13 @@ def insert_image_record(
 
 def update_image_record_meta(
     image_id: str,
+    capture_time: Optional[datetime] = None,
+    source_type: Optional[str] = None,
+    image_path: Optional[str] = None,
+    lat_center: Optional[float] = None,
+    lon_center: Optional[float] = None,
+    resolution_m: Optional[float] = None,
+    sensor_platform: Optional[str] = None,
     session_id: Optional[str] = None,
     det_width: Optional[int] = None,
     det_height: Optional[int] = None,
@@ -111,8 +118,21 @@ def update_image_record_meta(
         rec = sess.get(ImageRecord, image_id)
         if rec is None:
             return None
-        if session_id is not None:
-            rec.session_id = session_id
+        # A path can be ingested again in a new comparison session.  Updating
+        # only session_id used to leave the old timestamp/location in SQLite,
+        # so the UI refreshed while temporal pairing still read stale data.
+        for field, value in {
+            "capture_time": capture_time,
+            "source_type": source_type,
+            "image_path": image_path,
+            "lat_center": lat_center,
+            "lon_center": lon_center,
+            "resolution_m": resolution_m,
+            "sensor_platform": sensor_platform,
+            "session_id": session_id,
+        }.items():
+            if value is not None:
+                setattr(rec, field, value)
         if det_width is not None:
             rec.det_width = det_width
         if det_height is not None:

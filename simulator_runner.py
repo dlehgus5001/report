@@ -694,6 +694,44 @@ def run_ingest_at(
     }
 
 
+def run_ingest_pair(
+    past_image: str,
+    current_image: str,
+    past_time: datetime,
+    current_time: datetime,
+    name: str = "사용자 업로드",
+) -> dict:
+    """사용자가 지정한 이전/현재 이미지 쌍을 동일한 ingest 흐름으로 적재한다."""
+    t0 = time.time()
+    imgs = [past_image, current_image]
+    # 업로드 영상은 실제 좌표가 없으므로 중립 좌표를 사용한다. 두 프레임에
+    # 동일 FOV를 부여해 기존 탐지/페어링 로직을 그대로 재사용한다.
+    sensor = {"lat": 0.0, "lon": 0.0, "name": name, "id": "UPLOAD_PAIR"}
+    meta = _build_metadata(sensor, imgs, explicit_times=[past_time, current_time])
+    # 업로드마다 독립 메타데이터를 사용해 동시 요청이 global metadata.json을
+    # 서로 덮어쓰지 않도록 한다.
+    metadata_path = SAMPLE_DIR.parent / Path(past_image).parent / "metadata.json"
+    metadata_path.parent.mkdir(parents=True, exist_ok=True)
+    metadata_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    cmd = [sys.executable, str(BASE_DIR / "main.py"), "--metadata", str(metadata_path), "--ingest-only"]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600, cwd=str(BASE_DIR))
+    session_id, image_ids = None, []
+    for line in (proc.stdout or "").splitlines():
+        if line.startswith("INGEST_RESULT:"):
+            parsed = json.loads(line[len("INGEST_RESULT:"):])
+            session_id, image_ids = parsed.get("session_id"), parsed.get("image_ids", [])
+            break
+    return {
+        "success": proc.returncode == 0,
+        "elapsed_s": round(time.time() - t0, 2),
+        "session_id": session_id,
+        "image_ids": image_ids,
+        "images": imgs,
+        "stderr_tail": (proc.stderr or "")[-500:],
+    }
+
+
 # ── 독립 실행 ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     logging.basicConfig(

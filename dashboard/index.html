@@ -823,6 +823,12 @@
       letter-spacing: .4px; text-align: center;
     }
     #mission-plan-btn:hover { background: #142a50; border-color: #3a6aaa; }
+    #pair-upload-panel { margin:10px; padding:12px; border:1px solid var(--border); background:#0a121c; }
+    #pair-upload-panel h3 { color:var(--amber); font-size:11px; margin-bottom:10px; }
+    .pair-file { display:block; width:100%; margin:7px 0; color:var(--dim); font:10px var(--font); }
+    #pair-upload-run { width:100%; margin-top:10px; padding:8px; cursor:pointer; color:#00140b; background:var(--green); border:0; font-weight:bold; }
+    #pair-upload-run:disabled { opacity:.45; cursor:wait; }
+    #pair-upload-status { min-height:28px; padding-top:8px; color:var(--dim); font-size:9px; line-height:1.5; }
 
     @media (max-width: 768px) {
       #mission-modal { width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0; }
@@ -939,8 +945,16 @@
       <div class="sub">Multi-Source Intelligent System</div>
     </div>
 
-    <!-- 임무계획 버튼 -->
-    <button id="mission-plan-btn">⊕ 위성 임무계획</button>
+    <div id="pair-upload-panel">
+      <h3>◈ 시계열 이미지 비교</h3>
+      <label>이전 이미지<input class="pair-file" id="previous-image" type="file" accept="image/png,image/jpeg,image/tiff"></label>
+      <label>현재 이미지<input class="pair-file" id="current-image" type="file" accept="image/png,image/jpeg,image/tiff"></label>
+      <button id="pair-upload-run">두 이미지 불러오기</button>
+      <div id="pair-upload-status">두 시점의 이미지를 선택하면 기존 탐지·매칭·보고서 로직으로 처리합니다.</div>
+    </div>
+
+    <!-- 기존 임무계획 UI는 호환성을 위해 보존하되 기본 화면에서는 숨김 -->
+    <button id="mission-plan-btn" style="display:none">⊕ 위성 임무계획</button>
 
     <!-- 시뮬레이터 컨트롤 -->
     <div id="sim-panel">
@@ -4822,6 +4836,42 @@ function _closeMissionModal() {
 }
 
 document.getElementById('mission-plan-btn').addEventListener('click', _openMissionModal);
+
+/* ── 이전/현재 이미지 쌍 업로드 ── */
+document.getElementById('pair-upload-run').addEventListener('click', async () => {
+  const previous = document.getElementById('previous-image').files[0];
+  const current  = document.getElementById('current-image').files[0];
+  const button   = document.getElementById('pair-upload-run');
+  const status   = document.getElementById('pair-upload-status');
+  if (!previous || !current) {
+    status.textContent = '이전 이미지와 현재 이미지를 모두 선택해 주세요.';
+    status.style.color = 'var(--red)';
+    return;
+  }
+  const form = new FormData();
+  form.append('previous', previous);
+  form.append('current', current);
+  button.disabled = true;
+  status.style.color = 'var(--amber)';
+  status.textContent = '이미지를 적재하고 있습니다…';
+  try {
+    const response = await fetch(`${API}/api/image-pairs`, { method: 'POST', body: form });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+    status.style.color = 'var(--green)';
+    status.textContent = '적재 완료. 탐지 방식을 선택해 분석을 계속하세요.';
+    await Promise.all([loadAllImages(), loadAllDetections()]);
+    // SSE가 프록시에서 지연되는 경우에도 단계별 분석 창을 즉시 연다.
+    if (data.session_id && data.image_ids) {
+      _dsOpen(data.session_id, data.image_ids, null, null, '', '업로드 이미지 비교', 0);
+    }
+  } catch (error) {
+    status.style.color = 'var(--red)';
+    status.textContent = `업로드 실패: ${error.message}`;
+  } finally {
+    button.disabled = false;
+  }
+});
 document.getElementById('mission-modal-close').addEventListener('click', _closeMissionModal);
 document.getElementById('mission-modal-overlay').addEventListener('click', e => {
   if (e.target === document.getElementById('mission-modal-overlay')) _closeMissionModal();
